@@ -1,8 +1,13 @@
 export default function Home() {
   return (
-    <main style={{ padding: "20px" }}>
-      <h1>ESP32 Cloud Dashboard</h1>
-      <p>Frontend is working!</p>
-    </main>
+useEffect(() => {
+  const grid = GridStack.init({ float: true });
+  const tempChart = new Chart(
+    document.getElementById("tempChart") as HTMLCanvasElement,
+    {
+      type: "line",
+      data: { labels: [], datasets: [{ label: "Temperature", data: [] }] },
+    }
   );
-}
+}, []);
+
