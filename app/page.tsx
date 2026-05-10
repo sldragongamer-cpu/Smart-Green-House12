@@ -1,5 +1,4 @@
-export default function Home() {
-  return (
+
 useEffect(() => {
   const grid = GridStack.init({ float: true });
   const tempChart = new Chart(
