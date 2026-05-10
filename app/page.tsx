@@ -2,11 +2,10 @@
 
 import { Chart } from "chart.js";
 import { GridStack } from "gridstack";
-
 import { useEffect } from "react";
 
 export default function Home() {
-  // ✅ Define sendCommand globally so JSX can use it
+  // Global sendCommand so JSX can use it
   async function sendCommand(cmd: string) {
     await fetch("/api/control", {
       method: "POST",
