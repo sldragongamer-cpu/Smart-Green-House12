@@ -1,8 +1,20 @@
-"use client"; // allows browser-side JS
+"use client";
+
+import { Chart } from "chart.js";
+import { GridStack } from "gridstack";
 
 import { useEffect } from "react";
 
 export default function Home() {
+  // ✅ Define sendCommand globally so JSX can use it
+  async function sendCommand(cmd: string) {
+    await fetch("/api/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: cmd }),
+    });
+  }
+
   useEffect(() => {
     // Initialize Gridstack
     const grid = (window as any).GridStack?.init({
@@ -11,13 +23,40 @@ export default function Home() {
       draggable: { handle: ".grid-stack-item-content" },
     });
 
+    // Charts
+    const tempChart = new (window as any).Chart(
+      document.getElementById("tempChart"),
+      {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [
+            { label: "Temperature", data: [], borderColor: "#ff5733" },
+          ],
+        },
+      }
+    );
+
+    const humidityChart = new (window as any).Chart(
+      document.getElementById("humidityChart"),
+      {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [{ label: "Humidity", data: [], borderColor: "#007bff" }],
+        },
+      }
+    );
+
     async function loadSensors() {
       const res = await fetch("/api/sensors");
       const data = await res.json();
+
       (document.getElementById("temp") as HTMLElement).innerText =
         data.temperature + " °C";
       (document.getElementById("humidity") as HTMLElement).innerText =
         data.humidity + " %";
+
       const waterBar = document.getElementById("waterBar") as HTMLElement;
       waterBar.style.width = data.wlevel + "%";
       waterBar.innerText = data.wlevel + "%";
@@ -31,14 +70,7 @@ export default function Home() {
       humidityChart.update();
     }
 
-    async function sendCommand(cmd: string) {
-      await fetch("/api/control", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: cmd }),
-      });
-    }
-
+    // Fan slider
     const fanSlider = document.getElementById("fanSlider") as HTMLInputElement;
     if (fanSlider) {
       fanSlider.addEventListener("input", () => {
@@ -47,29 +79,6 @@ export default function Home() {
         sendCommand("fan:" + fanSlider.value);
       });
     }
-
-    const tempChart = new (window as any).Chart(
-      document.getElementById("tempChart"),
-      {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            { label: "Temperature", data: [], borderColor: "#ff5733" },
-          ],
-        },
-      }
-    );
-    const humidityChart = new (window as any).Chart(
-      document.getElementById("humidityChart"),
-      {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [{ label: "Humidity", data: [], borderColor: "#007bff" }],
-        },
-      }
-    );
 
     setInterval(loadSensors, 3000);
   }, []);
