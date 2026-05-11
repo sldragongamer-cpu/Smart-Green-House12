@@ -18,14 +18,6 @@ import {
 import {
   Plus,
   ArrowLeft,
-  X,
-  GripVertical,
-  Trash2,
-  Thermometer,
-  Droplets,
-  Fan,
-  Lightbulb,
-  Waves,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -60,7 +52,6 @@ function genId() {
 
 interface WidgetMeta {
   label: string;
-  icon: React.ReactNode;
   iconEl: string;
   desc: string;
   defaultW: number;
@@ -68,26 +59,11 @@ interface WidgetMeta {
 }
 
 const WIDGET_META: Record<WidgetType, WidgetMeta> = {
-  temp: {
-    label: "Temperature", icon: <Thermometer size={18} />, iconEl: "🌡️",
-    desc: "Real-time temperature with chart", defaultW: 4, defaultH: 4,
-  },
-  humidity: {
-    label: "Humidity", icon: <Droplets size={18} />, iconEl: "💧",
-    desc: "Real-time humidity with chart", defaultW: 4, defaultH: 4,
-  },
-  fan: {
-    label: "Fan Speed", icon: <Fan size={18} />, iconEl: "🌀",
-    desc: "Adjust fan speed with slider", defaultW: 3, defaultH: 3,
-  },
-  light: {
-    label: "Light", icon: <Lightbulb size={18} />, iconEl: "💡",
-    desc: "Toggle light on/off", defaultW: 2, defaultH: 2,
-  },
-  water: {
-    label: "Water Level", icon: <Waves size={18} />, iconEl: "💦",
-    desc: "Monitor water level", defaultW: 2, defaultH: 2,
-  },
+  temp: { label: "Temperature", iconEl: "🌡️", desc: "Real-time temperature with chart", defaultW: 4, defaultH: 4 },
+  humidity: { label: "Humidity", iconEl: "💧", desc: "Real-time humidity with chart", defaultW: 4, defaultH: 4 },
+  fan: { label: "Fan Speed", iconEl: "🌀", desc: "Adjust fan speed with slider", defaultW: 3, defaultH: 3 },
+  light: { label: "Light", iconEl: "💡", desc: "Toggle light on/off", defaultW: 2, defaultH: 2 },
+  water: { label: "Water Level", iconEl: "💦", desc: "Monitor water level", defaultW: 2, defaultH: 2 },
 };
 
 const DASHBOARD_NAMES: Record<string, string> = {
@@ -105,6 +81,7 @@ export default function DashboardView() {
   const grid = useRef<GridStack | null>(null);
   const chartInstances = useRef<Map<string, Chart>>(new Map());
   const chartStore = useRef<Map<string, { labels: string[]; data: number[] }>>(new Map());
+  const widgetRendered = useRef<Set<string>>(new Set());
 
   const [sensors, setSensors] = useState<Sensors>({ temperature: 24, humidity: 60, light: false, fan: 0, water: 45 });
   const [widgets, setWidgets] = useState<Widget[]>([
@@ -120,6 +97,8 @@ export default function DashboardView() {
 
   const id = typeof params.id === "string" ? params.id : "";
   const dashName = DASHBOARD_NAMES[id] || id;
+
+
 
   useEffect(() => {
     chartStore.current.set("temp", { labels: [], data: [] });
@@ -162,11 +141,8 @@ export default function DashboardView() {
       float: false,
       resizable: { handles: editMode ? "all" : "none" },
       draggable: { handle: ".grid-stack-item-content" },
-      column: 12,
-      cellHeight: 80,
-      margin: 12,
-      disableDrag: !editMode,
-      disableResize: !editMode,
+      column: 12, cellHeight: 80, margin: 12,
+      disableDrag: !editMode, disableResize: !editMode,
       alwaysShowResizeHandle: editMode,
     }, gridRef.current);
     grid.current = g;
@@ -187,21 +163,29 @@ export default function DashboardView() {
 
   useEffect(() => { syncWidgets(); }, [syncWidgets]);
 
+  // One-time setup: set widget structure and bind event listeners
+  useEffect(() => {
+    widgets.forEach((w) => {
+      const el = document.querySelector(`.grid-stack-item[gs-id="${w.id}"] .grid-stack-item-content`);
+      if (!el || widgetRendered.current.has(w.id)) return;
+      widgetRendered.current.add(w.id);
+
+      const meta = WIDGET_META[w.type];
+      el.innerHTML = buildWidgetHTML(w, meta, sensors, editMode);
+      bindWidgetListeners(el, w, setSensors, chartInstances, grid, setWidgets);
+    });
+  }, [widgets]);
+
+  // Live-update sensor values without replacing innerHTML
   useEffect(() => {
     widgets.forEach((w) => {
       const el = document.querySelector(`.grid-stack-item[gs-id="${w.id}"] .grid-stack-item-content`);
       if (!el) return;
-      const meta = WIDGET_META[w.type];
-      const removeBtn = editMode
-        ? `<button class="widget-remove-btn" onclick="window.dispatchEvent(new CustomEvent('remove-widget',{detail:'${w.id}'}))"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg></button>`
-        : "";
-      const dragHandle = editMode
-        ? `<div class="widget-drag-bar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg></div>`
-        : "";
-      el.innerHTML = renderWidget(w, sensors, meta, removeBtn, dragHandle);
+      updateWidgetValues(el, w, sensors, editMode);
     });
-  }, [sensors, widgets, editMode]);
+  }, [sensors, editMode]);
 
+  // Init charts
   useEffect(() => {
     const timer = setTimeout(() => {
       (["temp", "humidity"] as const).forEach((type) => {
@@ -219,36 +203,6 @@ export default function DashboardView() {
       });
     }, 50);
   }, [widgets]);
-
-  useEffect(() => {
-    const onLight = (e: Event) => {
-      const val = (e as CustomEvent).detail;
-      setSensors((p) => ({ ...p, light: val }));
-      fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ light: val }) });
-    };
-    const onFan = (e: Event) => {
-      const val = (e as CustomEvent).detail as number;
-      setSensors((p) => ({ ...p, fan: val }));
-      fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fan: val }) });
-    };
-    const onRemove = (e: Event) => {
-      const wid = (e as CustomEvent).detail;
-      const g = grid.current;
-      const el = g?.getGridItems().find((el) => el.getAttribute("gs-id") === wid);
-      if (el && g) g.removeWidget(el);
-      chartInstances.current.get(wid)?.destroy();
-      chartInstances.current.delete(wid);
-      setWidgets((p) => p.filter((w) => w.id !== wid));
-    };
-    window.addEventListener("toggle-light", onLight);
-    window.addEventListener("set-fan", onFan);
-    window.addEventListener("remove-widget", onRemove);
-    return () => {
-      window.removeEventListener("toggle-light", onLight);
-      window.removeEventListener("set-fan", onFan);
-      window.removeEventListener("remove-widget", onRemove);
-    };
-  }, []);
 
   function handleEditToggle() {
     const next = !editMode;
@@ -281,7 +235,6 @@ export default function DashboardView() {
       <Sidebar />
 
       <main className="dashboard-layout" style={{ position: "relative" }}>
-        {/* Top Bar */}
         <div className="dashboard-topbar">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button className="btn btn-sm" onClick={() => router.push("/dashboard")} style={{ padding: "4px 8px" }}>
@@ -312,66 +265,39 @@ export default function DashboardView() {
           </div>
         </div>
 
-        {/* Widget Palette */}
         {showPalette && editMode && (
           <div style={{
             position: "absolute", right: 24, top: 80, zIndex: 100,
             width: 280, background: "#fff", borderRadius: 12,
-            border: "1px solid var(--border)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-            overflow: "hidden",
+            border: "1px solid var(--border)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)", overflow: "hidden",
           }}>
-            <div style={{
-              display: "flex", borderBottom: "1px solid var(--border)",
-            }}>
-              <button
-                onClick={() => setPaletteTab("widgets")}
-                style={{
-                  flex: 1, padding: "10px 16px", border: "none", background: paletteTab === "widgets" ? "#fff" : "#f8f9fa",
-                  fontSize: 13, fontWeight: 600, cursor: "pointer", color: paletteTab === "widgets" ? "var(--teal)" : "var(--text-light)",
-                  borderBottom: paletteTab === "widgets" ? `2px solid var(--teal)` : "2px solid transparent",
-                }}
-              >
-                Widgets
-              </button>
-              <button
-                onClick={() => setPaletteTab("variables")}
-                style={{
-                  flex: 1, padding: "10px 16px", border: "none", background: paletteTab === "variables" ? "#fff" : "#f8f9fa",
-                  fontSize: 13, fontWeight: 600, cursor: "pointer", color: paletteTab === "variables" ? "var(--teal)" : "var(--text-light)",
-                  borderBottom: paletteTab === "variables" ? `2px solid var(--teal)` : "2px solid transparent",
-                }}
-              >
-                Variables
-              </button>
+            <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
+              <button onClick={() => setPaletteTab("widgets")} style={{
+                flex: 1, padding: "10px 16px", border: "none", background: paletteTab === "widgets" ? "#fff" : "#f8f9fa",
+                fontSize: 13, fontWeight: 600, cursor: "pointer", color: paletteTab === "widgets" ? "var(--teal)" : "var(--text-light)",
+                borderBottom: paletteTab === "widgets" ? "2px solid var(--teal)" : "2px solid transparent",
+              }}>Widgets</button>
+              <button onClick={() => setPaletteTab("variables")} style={{
+                flex: 1, padding: "10px 16px", border: "none", background: paletteTab === "variables" ? "#fff" : "#f8f9fa",
+                fontSize: 13, fontWeight: 600, cursor: "pointer", color: paletteTab === "variables" ? "var(--teal)" : "var(--text-light)",
+                borderBottom: paletteTab === "variables" ? "2px solid var(--teal)" : "2px solid transparent",
+              }}>Variables</button>
             </div>
-
             {paletteTab === "widgets" && (
               <div style={{ padding: 12, maxHeight: 400, overflowY: "auto" }}>
                 {(Object.entries(WIDGET_META) as [WidgetType, WidgetMeta][]).map(([type, meta]) => (
-                  <button
-                    key={type}
-                    onClick={() => { handleAddWidget(type); setShowPalette(false); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 12, width: "100%",
-                      padding: "10px 12px", border: "none", background: "none",
-                      cursor: "pointer", borderRadius: 8, fontSize: 13, textAlign: "left",
-                      fontFamily: "inherit", transition: "background 0.15s",
-                    }}
-                    className="palette-item"
-                  >
-                    <span style={{ fontSize: 20, width: 32, textAlign: "center", flexShrink: 0 }}>
-                      {meta.iconEl}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                  <button key={type} onClick={() => { handleAddWidget(type); setShowPalette(false); }} className="palette-item"
+                    style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 12px", border: "none", background: "none", cursor: "pointer", borderRadius: 8, fontSize: 13, textAlign: "left", fontFamily: "inherit" }}>
+                    <span style={{ fontSize: 20, width: 32, textAlign: "center" }}>{meta.iconEl}</span>
+                    <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 1 }}>{meta.label}</div>
                       <div style={{ fontSize: 11, color: "var(--text-light)" }}>{meta.desc}</div>
                     </div>
-                    <Plus size={14} style={{ color: "var(--text-light)", flexShrink: 0 }} />
+                    <Plus size={14} style={{ color: "var(--text-light)" }} />
                   </button>
                 ))}
               </div>
             )}
-
             {paletteTab === "variables" && (
               <div style={{ padding: 20, textAlign: "center", color: "var(--text-light)", fontSize: 13 }}>
                 <p style={{ margin: "0 0 8px" }}>No variables linked yet.</p>
@@ -381,7 +307,6 @@ export default function DashboardView() {
           </div>
         )}
 
-        {/* Edit mode banner */}
         {editMode && (
           <div style={{
             background: "linear-gradient(135deg, #00979d, #007b80)", color: "#fff",
@@ -389,22 +314,21 @@ export default function DashboardView() {
             display: "flex", alignItems: "center", gap: 12, fontSize: 13,
           }}>
             <Eye size={16} />
-            <span style={{ flex: 1 }}>You are in <strong>Edit Mode</strong>. Drag widgets to rearrange, resize from the bottom-right corner, or delete using the × button.</span>
-            <button
-              onClick={handleEditToggle}
-              style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", padding: "6px 16px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}
-            >
+            <span style={{ flex: 1 }}>You are in <strong>Edit Mode</strong>. Drag widgets to rearrange, resize from the bottom-right corner.</span>
+            <button onClick={() => { setShowPalette(!showPalette); setPaletteTab("widgets"); }}
+              style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", padding: "6px 16px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
+              <Plus size={12} style={{ marginRight: 4 }} />Add Widget
+            </button>
+            <button onClick={handleEditToggle}
+              style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", padding: "6px 16px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
               Done
             </button>
           </div>
         )}
 
-        {/* Widget Grid */}
         <div className="section" style={{
-          padding: 16,
-          background: editMode ? "#f8f9fa" : "#fff",
-          border: editMode ? "2px dashed #d0d5dd" : "none",
-          borderRadius: 12, minHeight: 500,
+          padding: 16, background: editMode ? "#f8f9fa" : "#fff",
+          border: editMode ? "2px dashed #d0d5dd" : "none", borderRadius: 12, minHeight: 500,
         }}>
           <div className="grid-stack" ref={gridRef} />
           {widgets.length === 0 && (
@@ -419,107 +343,183 @@ export default function DashboardView() {
 
       <style>{`
         .palette-item:hover { background: #f0fdfe; }
-        .widget-drag-bar {
-          position: absolute; top: 0; left: 0; right: 0;
-          height: 28px; background: rgba(0,151,157,0.06);
-          border-bottom: 1px solid rgba(0,151,157,0.1);
-          display: flex; align-items: center; justify-content: center;
-          cursor: grab; color: var(--teal); border-radius: 10px 10px 0 0;
-        }
-        .widget-drag-bar:active { cursor: grabbing; }
-        .widget-remove-btn {
-          position: absolute; top: 4px; right: 4px; z-index: 10;
-          width: 24px; height: 24px; border-radius: 6px;
-          border: none; background: rgba(239,68,68,0.1); color: #ef4444;
-          cursor: pointer; display: flex; align-items: center; justify-content: center;
-          transition: background 0.15s;
-        }
-        .widget-remove-btn:hover { background: rgba(239,68,68,0.2); }
-        .grid-stack-item.ui-draggable-disabled .grid-stack-item-content {
-          cursor: default;
-        }
         .grid-stack-item .ui-resizable-handle {
           background: var(--teal); border-radius: 50%;
           width: 10px; height: 10px; right: -5px; bottom: -5px;
           opacity: 0; transition: opacity 0.15s;
         }
-        .grid-stack-item:hover .ui-resizable-handle {
-          opacity: 0.7;
-        }
+        .grid-stack-item:hover .ui-resizable-handle { opacity: 0.7; }
+        .widget-btn-active { background: var(--teal) !important; color: #fff !important; border-color: var(--teal) !important; }
+        .wv { font-size:32px; font-weight:700; color:var(--text); line-height:1.1; }
+        .wsub { font-size:12px; color:var(--text-light); margin-bottom:8px; }
+        .wlbl { font-size:13px; font-weight:600; color:var(--text-light); text-transform:uppercase; letter-spacing:0.3px; }
+        .w-dot-on { width:8px; height:8px; border-radius:50%; background:#22c55e; display:inline-block; }
+        .w-dot-off { width:8px; height:8px; border-radius:50%; background:#9ca3af; display:inline-block; }
       `}</style>
     </div>
   );
 }
 
-function renderWidget(
-  w: Widget, s: Sensors,
-  meta: WidgetMeta, removeBtn: string, dragHandle: string
-): string {
-  const body = renderBody(w.type, s);
+// ─── Build initial widget HTML (done once per widget) ───
+function buildWidgetHTML(w: Widget, meta: WidgetMeta, s: Sensors, edit: boolean): string {
+  const removeBtn = edit
+    ? `<button class="w-remove" data-wid="${w.id}" style="position:absolute;top:6px;right:6px;z-index:10;width:24px;height:24px;border-radius:6px;border:none;background:rgba(239,68,68,0.1);color:#ef4444;cursor:pointer;display:flex;align-items:center;justify-content:center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+       </button>`
+    : "";
+  const dragBar = edit
+    ? `<div class="w-drag" style="position:absolute;top:0;left:0;right:0;height:28px;background:rgba(0,151,157,0.06);border-bottom:1px solid rgba(0,151,157,0.1);display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--teal);border-radius:10px 10px 0 0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+       </div>`
+    : "";
+
+  const body = buildBodyHTML(w.type, s);
 
   return `
-    <div style="display:flex;flex-direction:column;height:100%;position:relative;padding-top:${dragHandle ? "28px" : "0"}">
-      ${dragHandle}
+    <div style="display:flex;flex-direction:column;height:100%;position:relative;padding-top:${edit ? "28px" : "0"}">
+      ${dragBar}
       ${removeBtn}
       <div style="padding:14px 16px;flex:1;display:flex;flex-direction:column;min-height:0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span style="font-size:16px">${meta.iconEl}</span>
-          <span style="font-size:13px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.3px">${meta.label}</span>
+          <span class="wlbl">${meta.label}</span>
         </div>
-        ${body}
+        <div class="w-body" data-type="${w.type}" data-wid="${w.id}">
+          ${body}
+        </div>
       </div>
     </div>
   `;
 }
 
-function renderBody(type: WidgetType, s: Sensors): string {
+// ─── Build widget body HTML ───
+function buildBodyHTML(type: WidgetType, s: Sensors): string {
   switch (type) {
     case "temp":
-      return `
-        <div style="font-size:32px;font-weight:700;color:var(--text);line-height:1.1">${s.temperature}°C</div>
-        <div style="font-size:12px;color:var(--text-light);margin-bottom:8px">Last 20 readings</div>
-        <canvas id="chart-temp" style="flex:1;min-height:0;width:100%"></canvas>
-      `;
+      return `<div class="wv">${s.temperature}°C</div><div class="wsub">Last 20 readings</div><canvas id="chart-temp" style="flex:1;min-height:0;width:100%"></canvas>`;
     case "humidity":
-      return `
-        <div style="font-size:32px;font-weight:700;color:var(--text);line-height:1.1">${s.humidity}%</div>
-        <div style="font-size:12px;color:var(--text-light);margin-bottom:8px">Last 20 readings</div>
-        <canvas id="chart-humidity" style="flex:1;min-height:0;width:100%"></canvas>
-      `;
-    case "light": {
-      const on = s.light;
+      return `<div class="wv">${s.humidity}%</div><div class="wsub">Last 20 readings</div><canvas id="chart-humidity" style="flex:1;min-height:0;width:100%"></canvas>`;
+    case "light":
       return `
         <div style="display:flex;gap:8px;margin-top:4px">
-          <button class="btn" style="flex:1;${on ? 'background:var(--teal);color:#fff;border-color:var(--teal)' : ''}" onclick="window.dispatchEvent(new CustomEvent('toggle-light',{detail:true}))">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
-            On
-          </button>
-          <button class="btn" style="flex:1;${!on ? 'background:var(--teal);color:#fff;border-color:var(--teal)' : ''}" onclick="window.dispatchEvent(new CustomEvent('toggle-light',{detail:false}))">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M2 2l20 20"/><path d="M8.91 14a4.61 4.61 0 0 1-1.41-2.5C5.23 10.23 5 9 5 8a6 6 0 0 1 5.92-6"/></svg>
-            Off
-          </button>
+          <button class="btn widget-btn" data-action="light-on" style="flex:1">💡 On</button>
+          <button class="btn widget-btn" data-action="light-off" style="flex:1">🔌 Off</button>
         </div>
         <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
-          <span style="width:8px;height:8px;border-radius:50%;background:${on ? '#22c55e' : '#9ca3af'}"></span>
-          <span style="font-size:13px;color:var(--text-light)">${on ? 'ON' : 'OFF'}</span>
+          <span class="status-dot"></span>
+          <span class="status-text" style="font-size:13px;color:var(--text-light)"></span>
         </div>
       `;
-    }
     case "fan":
       return `
         <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
-          <input type="range" min="0" max="100" value="${s.fan}" class="widget-slider" oninput="window.dispatchEvent(new CustomEvent('set-fan',{detail:parseInt(this.value)}))">
-          <span style="font-size:24px;font-weight:700;color:var(--teal);min-width:48px;text-align:right">${s.fan}%</span>
+          <input type="range" min="0" max="100" class="widget-slider fan-slider">
+          <span class="fan-val" style="font-size:24px;font-weight:700;color:var(--teal);min-width:48px;text-align:right">${s.fan}%</span>
         </div>
       `;
     case "water":
       return `
-        <div style="font-size:32px;font-weight:700;color:var(--text);line-height:1.1">${s.water}%</div>
+        <div class="wv">${s.water}%</div>
         <div class="widget-progress" style="margin-top:12px">
-          <div class="widget-progress-bar" style="width:${s.water}%;background:linear-gradient(90deg,#00979d,#00d4aa)"></div>
+          <div class="widget-progress-bar water-bar" style="width:${s.water}%;background:linear-gradient(90deg,#00979d,#00d4aa)">${s.water}%</div>
         </div>
       `;
     default:
       return `<p style="color:var(--text-light)">Widget</p>`;
   }
+}
+
+// ─── Update values without replacing DOM ───
+function updateWidgetValues(el: Element, w: Widget, s: Sensors, edit: boolean) {
+  const body = el.querySelector(".w-body") as HTMLElement;
+  if (!body) return;
+
+  // Edit mode: toggle remove/drag visibility
+  const removeBtn = el.querySelector(".w-remove") as HTMLElement;
+  const dragBar = el.querySelector(".w-drag") as HTMLElement;
+  if (removeBtn) removeBtn.style.display = edit ? "flex" : "none";
+  if (dragBar) dragBar.style.display = edit ? "flex" : "none";
+
+  switch (w.type) {
+    case "temp": {
+      const v = body.querySelector(".wv");
+      if (v) v.textContent = `${s.temperature}°C`;
+      break;
+    }
+    case "humidity": {
+      const v = body.querySelector(".wv");
+      if (v) v.textContent = `${s.humidity}%`;
+      break;
+    }
+    case "light": {
+      const onBtn = body.querySelector('[data-action="light-on"]') as HTMLButtonElement;
+      const offBtn = body.querySelector('[data-action="light-off"]') as HTMLButtonElement;
+      const dot = body.querySelector(".status-dot") as HTMLElement;
+      const text = body.querySelector(".status-text") as HTMLElement;
+      if (onBtn) onBtn.className = `btn widget-btn${s.light ? " widget-btn-active" : ""}`;
+      if (offBtn) offBtn.className = `btn widget-btn${!s.light ? " widget-btn-active" : ""}`;
+      if (dot) dot.className = s.light ? "status-dot w-dot-on" : "status-dot w-dot-off";
+      if (text) text.textContent = s.light ? "ON" : "OFF";
+      break;
+    }
+    case "fan": {
+      const slider = body.querySelector(".fan-slider") as HTMLInputElement;
+      const val = body.querySelector(".fan-val") as HTMLElement;
+      if (slider && slider.value !== String(s.fan)) slider.value = String(s.fan);
+      if (val) val.textContent = `${s.fan}%`;
+      break;
+    }
+    case "water": {
+      const v = body.querySelector(".wv");
+      const bar = body.querySelector(".water-bar") as HTMLElement;
+      if (v) v.textContent = `${s.water}%`;
+      if (bar) { bar.style.width = `${s.water}%`; bar.textContent = `${s.water}%`; }
+      break;
+    }
+  }
+}
+
+// ─── Bind event listeners (done once per widget) ───
+function bindWidgetListeners(
+  el: Element, w: Widget,
+  setSensors: React.Dispatch<React.SetStateAction<Sensors>>,
+  chartInstances: React.MutableRefObject<Map<string, Chart>>,
+  grid: React.MutableRefObject<GridStack | null>,
+  setWidgets: React.Dispatch<React.SetStateAction<Widget[]>>,
+) {
+  const body = el.querySelector(".w-body") as HTMLElement;
+  if (!body) return;
+
+  // Light buttons
+  const onBtn = body.querySelector('[data-action="light-on"]');
+  const offBtn = body.querySelector('[data-action="light-off"]');
+  onBtn?.addEventListener("click", () => {
+    setSensors((p) => ({ ...p, light: true }));
+    fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ light: true }) });
+  });
+  offBtn?.addEventListener("click", () => {
+    setSensors((p) => ({ ...p, light: false }));
+    fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ light: false }) });
+  });
+
+  // Fan slider
+  const slider = body.querySelector(".fan-slider") as HTMLInputElement;
+  slider?.addEventListener("input", () => {
+    const val = parseInt(slider.value) || 0;
+    setSensors((p) => ({ ...p, fan: val }));
+    fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fan: val }) });
+    const label = body.querySelector(".fan-val") as HTMLElement;
+    if (label) label.textContent = `${val}%`;
+  });
+
+  // Remove button
+  const removeBtn = el.querySelector(".w-remove") as HTMLElement;
+  removeBtn?.addEventListener("click", () => {
+    const g = grid.current;
+    const item = g?.getGridItems().find((el) => el.getAttribute("gs-id") === w.id);
+    if (item && g) g.removeWidget(item);
+    chartInstances.current.get(w.id)?.destroy();
+    chartInstances.current.delete(w.id);
+    setWidgets((p) => p.filter((x) => x.id !== w.id));
+  });
 }
