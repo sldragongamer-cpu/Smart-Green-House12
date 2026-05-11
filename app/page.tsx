@@ -1,107 +1,102 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { GridStack } from "gridstack";
-import "gridstack/dist/gridstack.min.css";
+import Sidebar from "./components/Sidebar";
+import { FileText, BookOpen, Globe, LayoutDashboard } from "lucide-react";
 
-type Widget = {
-  id: number;
-  type: "chart" | "switch" | "slider" | "gauge" | "value";
-};
-
-export default function Dashboard() {
-  const gridRef = useRef<GridStack | null>(null);
-  const [widgets, setWidgets] = useState<Widget[]>([
-    { id: 1, type: "chart" },
-    { id: 2, type: "switch" },
-  ]);
-
-  useEffect(() => {
-    const grid = GridStack.init({
-      float: true,
-      resizable: { handles: "all" },
-      draggable: { handle: ".grid-stack-item-content" },
-      cellHeight: 120,
-      margin: 10,
-    });
-    gridRef.current = grid;
-
-    // Load saved layout
-    const saved = localStorage.getItem("layout");
-    if (saved) {
-      setWidgets(JSON.parse(saved));
-    }
-  }, []);
-
-  useEffect(() => {
-    // Save layout whenever widgets change
-    localStorage.setItem("layout", JSON.stringify(widgets));
-  }, [widgets]);
-
-  function addWidget(type: Widget["type"]) {
-    setWidgets([...widgets, { id: Date.now(), type }]);
-  }
-
+export default function Home() {
   return (
-    <main style={{ backgroundColor: "white", minHeight: "100vh", padding: "20px" }}>
-      <h1 style={{ textAlign: "center", marginBottom: "20px" }}>ESP32 Cloud Dashboard</h1>
+    <div className="layout">
+      <header className="global-header">
+        <div className="header-left">
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+            <img src="/greenhouse-logo.png" alt="Greenhouse" width="22" height="22" style={{ objectFit: "contain" }} />
+          </div>
+          <span className="brand">Smart Green House</span>
+        </div>
+        <div className="header-right">
+          <div className="user-info">
+            <span className="user-name">D M N K Premar...</span>
+            <span className="user-email">lithula7@gmail.com</span>
+          </div>
+          <div className="user-avatar">D</div>
+        </div>
+      </header>
 
-      {/* Add Widget Controls */}
-      <div style={{ textAlign: "center", marginBottom: "20px" }}>
-        <button onClick={() => addWidget("chart")}>+ Chart</button>
-        <button onClick={() => addWidget("switch")}>+ Switch</button>
-        <button onClick={() => addWidget("slider")}>+ Slider</button>
-        <button onClick={() => addWidget("gauge")}>+ Gauge</button>
-        <button onClick={() => addWidget("value")}>+ Value</button>
-      </div>
+      <Sidebar />
 
-      {/* Grid Layout */}
-      <div className="grid-stack">
-        {widgets.map((w, i) => (
-          <div
-            key={w.id}
-            className="grid-stack-item"
-            data-gs-x={i % 3}
-            data-gs-y={Math.floor(i / 3)}
-            data-gs-w="3"
-            data-gs-h="3"
-          >
-            <div className="grid-stack-item-content">
-              {w.type === "chart" && (
-                <>
-                  <h2>📊 Chart</h2>
-                  <canvas></canvas>
-                </>
-              )}
-              {w.type === "switch" && (
-                <>
-                  <h2>💡 Switch</h2>
-                  <button>On</button>
-                  <button>Off</button>
-                </>
-              )}
-              {w.type === "slider" && (
-                <>
-                  <h2>🌀 Slider</h2>
-                  <input type="range" min="0" max="100" defaultValue="0" />
-                </>
-              )}
-              {w.type === "gauge" && (
-                <>
-                  <h2>📈 Gauge</h2>
-                  <p>-- %</p>
-                </>
-              )}
-              {w.type === "value" && (
-                <>
-                  <h2>🔢 Value</h2>
-                  <p>--</p>
-                </>
-              )}
+      <main className="content">
+        <div className="page-header">
+          <h1>Home</h1>
+          <div className="header-stats">
+            <span>
+              Devices <span className="stat-value">0 online</span>
+            </span>
+            <span>
+              Things <span className="stat-value">2/2</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="section">
+          <div className="section-header">
+            <h2>Recent Files</h2>
+          </div>
+          <div className="section-body">
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Creation Date</th>
+                    <th>Opened At</th>
+                    <th>Owner</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>ESP32</td>
+                    <td>-</td>
+                    <td>May 10, 2026, 9:50 PM</td>
+                    <td>lithula7@gmail.com</td>
+                  </tr>
+                  <tr>
+                    <td>Green House Variables</td>
+                    <td>Aug 11, 2025, 6:23 PM</td>
+                    <td>May 7, 2026, 5:29 PM</td>
+                    <td>lithula7@gmail.com</td>
+                  </tr>
+                  <tr>
+                    <td>Green House</td>
+                    <td>-</td>
+                    <td>May 10, 2026, 11:49 PM</td>
+                    <td>lithula7@gmail.com</td>
+                  </tr>
+                  <tr>
+                    <td>Green_House_Variables_aug11a</td>
+                    <td>Aug 11, 2025, 6:23 PM</td>
+                    <td>May 10, 2026, 9:50 PM</td>
+                    <td>lithula7@gmail.com</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
-        ))}
-      </div>
-    </main>
+        </div>
+
+        <div className="section">
+          <div className="section-header">
+            <h2>Documentation</h2>
+          </div>
+          <div className="section-body">
+            <ul className="docs-list">
+              <li><FileText size={16} /> Hardware documentation</li>
+              <li><BookOpen size={16} /> Discover our tutorials</li>
+              <li><Globe size={16} /> Arduino Cloud APIs</li>
+              <li><LayoutDashboard size={16} /> Cloud Dashboards &amp; Widgets</li>
+            </ul>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }
