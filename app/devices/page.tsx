@@ -2,17 +2,33 @@
 
 import { useState } from "react";
 import Sidebar from "../components/Sidebar";
-import { Cpu, Wifi, WifiOff, MoreHorizontal, Copy, Trash2, Plus } from "lucide-react";
+import { Cpu, Wifi, WifiOff, MoreHorizontal, Plus, X } from "lucide-react";
 
-const DEVICES = [
-  { id: "esp32-1", name: "ESP32 Dev Board", type: "ESP32", status: "online", lastSeen: "Just now", ip: "192.168.1.42", thing: "ESP32" },
-  { id: "esp32-2", name: "Green House Sensor", type: "ESP32", status: "online", lastSeen: "2 min ago", ip: "192.168.1.43", thing: "Green House" },
-  { id: "uno-1", name: "Arduino Uno R4", type: "UNO R4 WiFi", status: "offline", lastSeen: "3 hours ago", ip: "—", thing: "Green House Variables" },
-];
+const DEVICE_TYPES = ["ESP32", "ESP8266", "UNO R4 WiFi", "MKR WiFi 1010", "Nano RP2040 Connect", "Portenta H7"];
 
 export default function Devices() {
-  const [devices, setDevices] = useState(DEVICES);
+  const [devices, setDevices] = useState([
+    { id: "esp32-1", name: "ESP32 Dev Board", type: "ESP32", status: "online", lastSeen: "Just now", ip: "192.168.1.42", thing: "ESP32" },
+    { id: "esp32-2", name: "Green House Sensor", type: "ESP32", status: "online", lastSeen: "2 min ago", ip: "192.168.1.43", thing: "Green House" },
+    { id: "uno-1", name: "Arduino Uno R4", type: "UNO R4 WiFi", status: "offline", lastSeen: "3 hours ago", ip: "—", thing: "Green House Variables" },
+  ]);
   const [showAdd, setShowAdd] = useState(false);
+  const [newDev, setNewDev] = useState({ name: "", type: "ESP32" });
+
+  function handleAdd() {
+    if (!newDev.name.trim()) return;
+    setDevices([...devices, {
+      id: `dev-${Date.now()}`,
+      name: newDev.name,
+      type: newDev.type,
+      status: "online",
+      lastSeen: "Just now",
+      ip: "—",
+      thing: "—",
+    }]);
+    setShowAdd(false);
+    setNewDev({ name: "", type: "ESP32" });
+  }
 
   return (
     <div className="layout">
@@ -69,9 +85,7 @@ export default function Devices() {
                       <td>{d.lastSeen}</td>
                       <td>{d.thing}</td>
                       <td>
-                        <button className="card-menu" onClick={() => {}}>
-                          <MoreHorizontal size={14} />
-                        </button>
+                        <button className="card-menu"><MoreHorizontal size={14} /></button>
                       </td>
                     </tr>
                   ))}
@@ -81,6 +95,39 @@ export default function Devices() {
           </div>
         </div>
       </main>
+
+      {showAdd && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}
+             onClick={() => setShowAdd(false)}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 32, width: 440, maxWidth: "90vw", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}
+               onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Add Device</h2>
+              <button onClick={() => setShowAdd(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6c757d", padding: 4 }}><X size={20} /></button>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>Device Name</label>
+              <input type="text" placeholder="e.g. Living Room Sensor" value={newDev.name}
+                onChange={(e) => setNewDev({ ...newDev, name: e.target.value })}
+                autoFocus onKeyDown={(e) => e.key === "Enter" && handleAdd()} />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 24 }}>
+              <label>Device Type</label>
+              <select value={newDev.type} onChange={(e) => setNewDev({ ...newDev, type: e.target.value })}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 14, fontFamily: "inherit", background: "#fff" }}>
+                {DEVICE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setShowAdd(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleAdd}>Add Device</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
