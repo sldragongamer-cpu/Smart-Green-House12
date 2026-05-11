@@ -221,8 +221,16 @@ export default function DashboardView() {
   }, [widgets]);
 
   useEffect(() => {
-    const onLight = (e: Event) => setSensors((p) => ({ ...p, light: (e as CustomEvent).detail }));
-    const onFan = (e: Event) => setSensors((p) => ({ ...p, fan: (e as CustomEvent).detail as number }));
+    const onLight = (e: Event) => {
+      const val = (e as CustomEvent).detail;
+      setSensors((p) => ({ ...p, light: val }));
+      fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ light: val }) });
+    };
+    const onFan = (e: Event) => {
+      const val = (e as CustomEvent).detail as number;
+      setSensors((p) => ({ ...p, fan: val }));
+      fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fan: val }) });
+    };
     const onRemove = (e: Event) => {
       const wid = (e as CustomEvent).detail;
       const g = grid.current;
