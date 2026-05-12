@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-
-let latestData = { temperature: 0, humidity: 0 };
+import { getLatestSensor, saveSensorData } from "@/app/lib/store";
 
 export async function POST(request: Request) {
   const data = await request.json();
-  latestData = data;
-  return NextResponse.json({ status: "ok" });
+  const updated = saveSensorData(data);
+  return NextResponse.json(updated);
 }
 
 export async function GET() {
-  return NextResponse.json(latestData);
+  return NextResponse.json(getLatestSensor());
 }

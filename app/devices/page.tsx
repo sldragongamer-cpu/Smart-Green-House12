@@ -1,63 +1,105 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Sidebar from "../components/Sidebar";
-import { Cpu, Wifi, WifiOff, MoreHorizontal, Plus, X } from "lucide-react";
+import { Cpu, Wifi, WifiOff, Plus, X, Trash2, RefreshCw } from "lucide-react";
 
 const DEVICE_TYPES = ["ESP32", "ESP8266", "UNO R4 WiFi", "MKR WiFi 1010", "Nano RP2040 Connect", "Portenta H7"];
 
+interface Device {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  lastSeen: string;
+  ip: string;
+  thing: string;
+  autoRegistered?: boolean;
+}
+
 export default function Devices() {
-  const [devices, setDevices] = useState([
-    { id: "esp32-1", name: "ESP32 Dev Board", type: "ESP32", status: "online", lastSeen: "Just now", ip: "192.168.1.42", thing: "ESP32" },
-    { id: "esp32-2", name: "Green House Sensor", type: "ESP32", status: "online", lastSeen: "2 min ago", ip: "192.168.1.43", thing: "Green House" },
-    { id: "uno-1", name: "Arduino Uno R4", type: "UNO R4 WiFi", status: "offline", lastSeen: "3 hours ago", ip: "—", thing: "Green House Variables" },
-  ]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newDev, setNewDev] = useState({ name: "", type: "ESP32" });
 
-  function handleAdd() {
+  const fetchDevices = useCallback(async () => {
+    const res = await fetch("/api/devices");
+    const data = await res.json();
+    setDevices(data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchDevices(); }, [fetchDevices]);
+
+  // Poll every 5s to update online/offline status
+  useEffect(() => {
+    const iv = setInterval(fetchDevices, 5000);
+    return () => clearInterval(iv);
+  }, [fetchDevices]);
+
+  async function handleAdd() {
     if (!newDev.name.trim()) return;
-    setDevices([...devices, {
-      id: `dev-${Date.now()}`,
-      name: newDev.name,
-      type: newDev.type,
-      status: "online",
-      lastSeen: "Just now",
-      ip: "—",
-      thing: "—",
-    }]);
+    const res = await fetch("/api/devices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newDev),
+    });
+    const device = await res.json();
+    setDevices([...devices, device]);
     setShowAdd(false);
     setNewDev({ name: "", type: "ESP32" });
   }
 
+  async function handleDelete(id: string) {
+    await fetch(`/api/devices/${id}`, { method: "DELETE" });
+    setDevices(devices.filter((d) => d.id !== id));
+  }
+
+  const onlineCount = devices.filter((d) => d.status === "online").length;
+
+  const header = (
+    <header className="global-header">
+      <div className="header-left">
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
+          <img src="/greenhouse-logo.png" alt="Greenhouse" width="22" height="22" style={{ objectFit: "contain" }} />
+        </div>
+        <span className="brand">Smart Green House</span>
+      </div>
+      <div className="header-right">
+        <div className="user-info">
+          <span className="user-name">D M N K Premar...</span>
+          <span className="user-email">lithula7@gmail.com</span>
+        </div>
+        <div className="user-avatar">D</div>
+      </div>
+    </header>
+  );
+
   return (
     <div className="layout">
-      <header className="global-header">
-        <div className="header-left">
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
-            <img src="/greenhouse-logo.png" alt="Greenhouse" width="22" height="22" style={{ objectFit: "contain" }} />
-          </div>
-          <span className="brand">Smart Green House</span>
-        </div>
-        <div className="header-right">
-          <div className="user-info">
-            <span className="user-name">D M N K Premar...</span>
-            <span className="user-email">lithula7@gmail.com</span>
-          </div>
-          <div className="user-avatar">D</div>
-        </div>
-      </header>
+      {header}
       <Sidebar />
       <main className="content">
         <div className="page-header">
           <h1>Devices</h1>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
-            <Plus size={14} /> Add Device
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-sm" onClick={fetchDevices} title="Refresh">
+              <RefreshCw size={14} />
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
+              <Plus size={14} /> Add Device
+            </button>
+          </div>
         </div>
 
         <div className="section">
-          <div className="section-header"><h2>My Devices</h2></div>
+          <div className="section-header">
+            <h2>My Devices</h2>
+            <span style={{ fontSize: 13, color: "var(--text-light)" }}>
+              {onlineCount} online / {devices.length} total
+            </span>
+          </div>
           <div className="section-body">
             <div className="table-wrapper">
               <table>
@@ -72,9 +114,23 @@ export default function Devices() {
                   </tr>
                 </thead>
                 <tbody>
-                  {devices.map((d) => (
+                  {loading ? (
+                    <tr><td colSpan={6} style={{ textAlign: "center", padding: 40, color: "var(--text-light)" }}>Loading...</td></tr>
+                  ) : devices.length === 0 ? (
+                    <tr><td colSpan={6} style={{ textAlign: "center", padding: 40, color: "var(--text-light)" }}>
+                      No devices yet. <strong>Connect an ESP32</strong> — it will appear here automatically when it starts sending sensor data.
+                    </td></tr>
+                  ) : devices.map((d) => (
                     <tr key={d.id}>
-                      <td style={{ fontWeight: 500 }}><Cpu size={14} style={{ marginRight: 6, color: "var(--teal)" }} />{d.name}</td>
+                      <td style={{ fontWeight: 500 }}>
+                        <Cpu size={14} style={{ marginRight: 6, color: "var(--teal)" }} />
+                        {d.name}
+                        {d.autoRegistered && (
+                          <span style={{ marginLeft: 6, fontSize: 10, background: "rgba(0,151,157,0.1)", color: "var(--teal)", padding: "1px 6px", borderRadius: 3, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.3px" }}>
+                            Auto
+                          </span>
+                        )}
+                      </td>
                       <td>{d.type}</td>
                       <td>
                         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -85,7 +141,9 @@ export default function Devices() {
                       <td>{d.lastSeen}</td>
                       <td>{d.thing}</td>
                       <td>
-                        <button className="card-menu"><MoreHorizontal size={14} /></button>
+                        <button className="card-menu" onClick={() => handleDelete(d.id)} title="Delete">
+                          <Trash2 size={14} style={{ color: "#ef4444" }} />
+                        </button>
                       </td>
                     </tr>
                   ))}
